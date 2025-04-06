@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { Activity, AlertTriangle, CheckCircle, Clock, Settings, AlertCircle, Grid, ArrowLeft, Plus, Trash2, X } from 'lucide-react';
+import { Activity, AlertTriangle, CheckCircle, Settings, AlertCircle, Grid, ArrowLeft, Plus, Trash2, X } from 'lucide-react';
 import { format } from 'date-fns';
 import axios from 'axios';
 
@@ -89,7 +89,13 @@ function App() {
             };
           });
 
-          return updatedMachines;
+          // Keep manually added machines that aren't in the API response
+          const manualMachines = prev.filter(machine => 
+            !Object.keys(response.data).includes(machine.id) &&
+            machine.id.startsWith('manual-')
+          );
+
+          return [...updatedMachines, ...manualMachines];
         });
       } catch (error) {
         console.error('Error fetching data:', error);
@@ -108,12 +114,47 @@ function App() {
 
   const handleAddMachine = () => {
     if (!newMachine.name) return;
+
+    const newMachineData: Machine = {
+      id: `manual-${Date.now()}`,
+      name: newMachine.name,
+      type: newMachine.type,
+      location: newMachine.location,
+      lastMaintenance: format(new Date(), 'yyyy-MM-dd'),
+      data: {
+        confidence: 'high',
+        models: {
+          gnb: 'normal',
+          knn: 'normal',
+          svm: 'normal'
+        },
+        predicted_fault: 'normal',
+        features: {
+          x: { rms: 0, kurtosis: 0, 'peek-to-peek': 0, crest_factor: 0 },
+          y: { rms: 0, kurtosis: 0, 'peek-to-peek': 0, crest_factor: 0 },
+          z: { rms: 0, kurtosis: 0, 'peek-to-peek': 0, crest_factor: 0 }
+        }
+      },
+      featureHistory: []
+    };
+
+    setMachines(prev => {
+      const updatedMachines = [...prev, newMachineData];
+      updateMachineCount(updatedMachines.length); // Update machine count in backend
+      return updatedMachines;
+    });
+
     setIsAddingMachine(false);
     setNewMachine({ name: '', type: 'Conveyor', location: 'Floor 1' });
   };
 
   const handleRemoveMachine = (machineId: string) => {
-    setMachines(prev => prev.filter(machine => machine.id !== machineId));
+    setMachines(prev => {
+      const updatedMachines = prev.filter(machine => machine.id !== machineId);
+      updateMachineCount(updatedMachines.length); // Update machine count in backend
+      return updatedMachines;
+    });
+
     if (selectedMachine?.id === machineId) {
       setSelectedMachine(null);
     }
@@ -142,6 +183,7 @@ function App() {
               onChange={(e) => setNewMachine(prev => ({ ...prev, name: e.target.value }))}
               className="w-full bg-gray-700 rounded px-3 py-2 text-white"
               placeholder="Enter machine name"
+              autoFocus
             />
           </div>
           <div>
@@ -234,6 +276,15 @@ function App() {
       </div>
     </div>
   );
+
+  const updateMachineCount = async (count: number) => {
+    try {
+      await axios.post(`${API_URL}/update_machine_count`, { count });
+      console.log(`Machine count updated to ${count}`);
+    } catch (error) {
+      console.error('Error updating machine count:', error);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gray-900 text-white">

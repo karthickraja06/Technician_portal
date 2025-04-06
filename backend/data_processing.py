@@ -9,21 +9,14 @@ machine_buffers = {i: deque(maxlen=ROLLING_WINDOW) for i in range(1, 11)}
 def process_data(queue, result_queue):
     """ Process incoming vibration data and extract features """
     while True:
-        machine_id, data, expected = queue.get()
+        machine_id, data, condition = queue.get()
         machine_buffers[machine_id].append(data)  # Store in rolling buffer
-
-        # Combine the rolling buffer into a single 2D array
-        latest_data = np.vstack(machine_buffers[machine_id])  # Stack all buffered data vertically
-
-        # Extract features from the latest data
-        features = extract_feature(latest_data)  # Extract features (ensure this returns a 1D array)
-
-        # Predict fault using the extracted features
+        latest_data = np.vstack(machine_buffers[machine_id])  # Convert buffer to array
+        # latest_data = machine_buffers[machine_id]
+        features = extract_feature(latest_data)  # Extract features
         prediction = predict_fault(features)
-
-        # Send processed data to the result queue
         result_queue.put((machine_id, {
-            'expected': expected,  # Expected fault condition
+            'expected': condition,
             'predicted_fault': prediction['fault'],
             'confidence': prediction['confidence'],
             'models': {  # Individual model outputs
@@ -31,4 +24,4 @@ def process_data(queue, result_queue):
                 'knn': prediction['knn'],
                 'gnb': prediction['gnb']
             }
-        }))
+        }))  # Send processed data

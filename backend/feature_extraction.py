@@ -17,11 +17,12 @@ def Ab_mean(data): return np.mean(np.abs(data), axis=1)
 # FFT function
 def FFT(data):
     """Perform FFT and truncate frequencies."""
+    data = np.atleast_2d(data)  # Ensure input is 2D
     dt = 1 / 20000
-    data = rfft(data)*dt
+    data = rfft(data) * dt
     data = abs(data).T
-    data = (np.delete(data, range(500*5,len(data)), axis=0)).T
-    return data  # Truncate to 500 frequencies
+    data = (np.delete(data, range(500 * 5, len(data)), axis=0)).T
+    return data
 
 # Normalize function
 def NormalizeData(data):
@@ -50,5 +51,6 @@ def extract_feature(data):
     features = np.concatenate([
         np.concatenate([func(fft_x), func(fft_y), func(fft_z)]) for func in feature_funcs
     ])
+    
 
     return features

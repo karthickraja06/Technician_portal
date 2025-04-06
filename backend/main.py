@@ -1,40 +1,24 @@
-# # api/main.py
-#   
-# from fastapi import FastAPI
-# from predictor import predict_fault
-# from simulator import MachineDataSimulator
-# import numpy as np
-
-# app = FastAPI()
-# simulator = MachineDataSimulator("data/dummy_data.csv")
-
-# @app.get("/api/all-machines")
-# def get_all_machines():
-#     data = simulator.get_all_machines_data()
-#     for machine, values in data.items():
-#         features = np.array([[values['x'], values['y'], values['z']]])
-#         prediction = predict_fault(features)
-#         data[machine].update({
-#             'predicted_fault': prediction['fault'],
-#             'confidence': prediction['confidence'],
-#             'models': {  # Individual model outputs
-#                 'svm': prediction['svm'],
-#                 'knn': prediction['knn'],
-#                 'gnb': prediction['gnb']
-#             }
-#         })
-#     return data
-# print(get_all_machines())
+from flask import Flask, request, jsonify
 from multiprocessing import Queue, Process
 from data_stream import data_streaming
 from data_processing import process_data
 from server import run_server, update_dashboard
 import threading
 
+app = Flask(__name__)
+
+# Global variable for the number of machines
+num_machines = 1
+
+@app.route('/update_machine_count', methods=['POST'])
+def update_machine_count():
+    global num_machines
+    data = request.json
+    num_machines = data.get('count', num_machines)
+    print(f"Updated number of machines: {num_machines}")
+    return jsonify({"message": "Machine count updated", "num_machines": num_machines})
 
 if __name__ == "__main__":
-    
-    num_machines = 2
     data_queue = Queue()
     result_queue = Queue()
 
