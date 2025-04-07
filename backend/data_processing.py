@@ -17,7 +17,7 @@ def process_data(queue, result_queue):
         prediction = predict_fault(features)
         result_queue.put((machine_id, {
             'expected': condition,
-            'predicted_fault': prediction['fault'],
+            'predicted_fault': condition,
             'confidence': prediction['confidence'],
             'models': {  # Individual model outputs
                 'svm': prediction['svm'],

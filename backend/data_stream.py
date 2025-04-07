@@ -7,7 +7,6 @@ DATA_PATHS = {
     "misalignment": "data/misalignment_data.csv",
     "normal": "data/normal_data.csv",
     "unbalance": "data/unbalance_data.csv"
-    # "feature": "data/feature_VBL-VA001.csv"
 }
 
 def load_random_vibration_data():
@@ -19,6 +18,7 @@ def load_random_vibration_data():
         header=None,  # No headers in the file
         names=['time', 'x', 'y', 'z']  # Explicit column names
     )  # Load small chunk
+    
     return (df[['time', 'x', 'y', 'z']].values,condition) # Return NumPy array
 
 def data_streaming(machine_id, queue):
@@ -26,4 +26,4 @@ def data_streaming(machine_id, queue):
     while True:
         data, condition = load_random_vibration_data()
         queue.put((machine_id, data, condition))  # Send to processing queue
-        time.sleep(1/20)  # Simulate real-time arrival of data
+        time.sleep(1)  # Simulate real-time arrival of data

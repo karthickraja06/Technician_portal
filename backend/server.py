@@ -1,7 +1,9 @@
 from flask import Flask, jsonify
+from flask_cors import CORS
 from livereload import Server
 
 app = Flask(__name__)
+CORS(app)
 processed_data = {}  # Store latest machine features
 
 @app.route('/machine_data')
@@ -18,4 +20,5 @@ def update_dashboard(result_queue):
 def run_server():
     server = Server(app.wsgi_app)  # Wrap Flask app with livereload server
     server.watch('*.py')  # Watch for changes in Python files
-    server.serve(host='0.0.0.0', port=5000, debug=True)
+    server.serve(host='127.0.0.1', port=5000, debug=True)
+#http://127.0.0.1:5000/update_machine_count

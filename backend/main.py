@@ -8,7 +8,7 @@ import threading
 app = Flask(__name__)
 
 # Global variable for the number of machines
-num_machines = 1
+num_machines = 2
 
 @app.route('/update_machine_count', methods=['POST'])
 def update_machine_count():

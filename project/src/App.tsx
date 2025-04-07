@@ -3,7 +3,11 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { Activity, AlertTriangle, CheckCircle, Settings, AlertCircle, Grid, ArrowLeft, Plus, Trash2, X } from 'lucide-react';
 import { format } from 'date-fns';
 import axios from 'axios';
+// import {Chart} from 'chart.js';
+// import 'chartjs-adapter-luxon';
+// import ChartStreaming from 'chartjs-plugin-streaming';
 
+// Chart.register(ChartStreaming);
 // Types
 interface FeatureData {
   rms: number;
@@ -112,9 +116,9 @@ function App() {
     return confidence === 'high' ? 'bg-red-500' : 'bg-amber-500';
   };
 
-  const handleAddMachine = () => {
+  const handleAddMachine = async () => {
     if (!newMachine.name) return;
-
+  
     const newMachineData: Machine = {
       id: `manual-${Date.now()}`,
       name: newMachine.name,
@@ -137,15 +141,18 @@ function App() {
       },
       featureHistory: []
     };
-
-    setMachines(prev => {
-      const updatedMachines = [...prev, newMachineData];
-      updateMachineCount(updatedMachines.length); // Update machine count in backend
-      return updatedMachines;
-    });
-
-    setIsAddingMachine(false);
-    setNewMachine({ name: '', type: 'Conveyor', location: 'Floor 1' });
+  
+    try {
+      setMachines(prev => {
+        const updatedMachines = [...prev, newMachineData];
+        updateMachineCount(updatedMachines.length); // Update machine count in backend
+        return updatedMachines;
+      });
+      setIsAddingMachine(false); // Close the modal
+    } catch (error) {
+      console.error('Error adding machine:', error);
+      setIsAddingMachine(false); // Ensure the modal closes even if there's an error
+    }
   };
 
   const handleRemoveMachine = (machineId: string) => {
@@ -231,11 +238,14 @@ function App() {
       className={`p-6 rounded-lg ${getStatusColor(machine)} bg-opacity-10 border border-opacity-30 
         ${getStatusColor(machine).replace('bg-', 'border-')} cursor-pointer transform transition-all duration-300 
         hover:scale-105 hover:bg-opacity-20 group relative`}
-      onClick={() => setSelectedMachine(machine)}
+      onClick={() => {
+        console.log('Machine clicked:', machine); // Debugging log
+        setSelectedMachine(machine);
+      }}
     >
       <button
         onClick={(e) => {
-          e.stopPropagation();
+          e.stopPropagation(); // Prevent click event from propagating to the parent div
           handleRemoveMachine(machine.id);
         }}
         className="absolute top-2 right-2 text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
@@ -279,7 +289,8 @@ function App() {
 
   const updateMachineCount = async (count: number) => {
     try {
-      await axios.post(`${API_URL}/update_machine_count`, { count });
+      console.log(`Sending request to: http://127.0.0.1:5000/update_machine_count`);
+      await axios.post(`http://127.0.0.1:5000/update_machine_count`, { count });
       console.log(`Machine count updated to ${count}`);
     } catch (error) {
       console.error('Error updating machine count:', error);
