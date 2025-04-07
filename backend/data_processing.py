@@ -13,7 +13,7 @@ def process_data(queue, result_queue):
         machine_buffers[machine_id].append(data)  # Store in rolling buffer
         latest_data = np.vstack(machine_buffers[machine_id])  # Convert buffer to array
         # latest_data = machine_buffers[machine_id]
-        features = extract_feature(latest_data)  # Extract features
+        features,values = extract_feature(latest_data)  # Extract features
         prediction = predict_fault(features)
         result_queue.put((machine_id, {
             'expected': condition,
@@ -23,5 +23,6 @@ def process_data(queue, result_queue):
                 'svm': prediction['svm'],
                 'knn': prediction['knn'],
                 'gnb': prediction['gnb']
-            }
+            },
+            'graph_value':values
         }))  # Send processed data
