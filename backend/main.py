@@ -1,31 +1,26 @@
-from flask import Flask, request, jsonify
-from multiprocessing import Queue, Process
+from multiprocessing import Queue, Process, Manager
 from data_stream import data_streaming
 from data_processing import process_data
 from server import run_server, update_dashboard
 import threading
 
-app = Flask(__name__)
-
-# Global variable for the number of machines
-num_machines = 2
-
-@app.route('/update_machine_count', methods=['POST'])
-def update_machine_count():
-    global num_machines
-    data = request.json
-    num_machines = data.get('count', num_machines)
-    print(f"Updated number of machines: {num_machines}")
-    return jsonify({"message": "Machine count updated", "num_machines": num_machines})
-
 if __name__ == "__main__":
+    manager = Manager()
+    shared_data = manager.dict()  # Shared dictionary for inter-process communication
+    
+    shared_data["num_machines"] = 1  # Initialize num_machines
+
+    # Initialize each machine's condition to "normal"
+    # for machine_id in range(1, shared_data["num_machines"] + 1):
+    #     shared_data[machine_id] = "normal"
+
     data_queue = Queue()
     result_queue = Queue()
 
     # Start data streaming processes
     processes = []
-    for machine_id in range(1, num_machines + 1):
-        p = Process(target=data_streaming, args=(machine_id, data_queue))
+    for machine_id in range(1, shared_data["num_machines"] + 1):
+        p = Process(target=data_streaming, args=(machine_id, data_queue, shared_data))
         p.start()
         processes.append(p)
 
@@ -34,7 +29,7 @@ if __name__ == "__main__":
     processing_process.start()
 
     # Start Flask server
-    threading.Thread(target=run_server).start()
+    threading.Thread(target=run_server, args=(shared_data,)).start()
 
     # Start updating dashboard
     update_dashboard(result_queue)

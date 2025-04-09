@@ -1,14 +1,15 @@
-import { useState, useEffect } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import React, { useState, useEffect, useRef } from 'react';
+// import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Activity, AlertTriangle, CheckCircle, Settings, AlertCircle, Grid, ArrowLeft, Plus, Trash2, X } from 'lucide-react';
 import { format } from 'date-fns';
 import axios from 'axios';
-// import {Chart} from 'chart.js';
-// import 'chartjs-adapter-luxon';
-// import ChartStreaming from 'chartjs-plugin-streaming';
+import { Chart, registerables } from 'chart.js';
+import 'chartjs-adapter-luxon';
+import ChartStreaming from 'chartjs-plugin-streaming';
+import { debounce } from 'lodash';
 
-// Chart.register(ChartStreaming);
-// Types
+Chart.register(...registerables, ChartStreaming);
+
 interface FeatureData {
   rms: number;
   kurtosis: number;
@@ -31,6 +32,11 @@ interface MachineData {
   };
   predicted_fault: string;
   features?: AxisFeatures;
+  graph_value?: {
+    x: Partial<FeatureData>;
+    y: Partial<FeatureData>;
+    z: Partial<FeatureData>;
+  };
 }
 
 interface ApiResponse {
@@ -53,7 +59,128 @@ interface Machine {
 }
 
 // API URL (replace with actual URL)
-const API_URL = 'http://127.0.0.1:5000/machine_data';
+const API_URL = 'http://127.0.0.1:8088/machine_data';
+
+const RealTimeChart = ({ selectedAxis, selectedMachine }: { selectedAxis: 'x' | 'y' | 'z'; selectedMachine: Machine }) => {
+  const chartRef = useRef<HTMLCanvasElement | null>(null);
+  const chartInstanceRef = useRef<Chart | null>(null);
+
+  useEffect(() => {
+    if (!chartRef.current) return;
+
+    const ctx = chartRef.current.getContext('2d');
+    if (!ctx) return;
+
+    // Destroy the previous chart instance if it exists
+    if (chartInstanceRef.current) {
+      chartInstanceRef.current.destroy();
+    }
+
+    // Create a new Chart.js instance
+    chartInstanceRef.current = new Chart(ctx, {
+      type: 'line',
+      data: {
+        datasets: [
+          {
+            label: 'RMS',
+            borderColor: 'rgba(255, 99, 132, 1)',
+            backgroundColor: 'rgba(255, 99, 132, 0.2)',
+            fill: false,
+            data: [],
+            borderWidth: 2,
+            pointRadius: 0,
+          },
+          {
+            label: 'Kurtosis',
+            borderColor: 'rgba(54, 162, 235, 1)',
+            backgroundColor: 'rgba(54, 162, 235, 0.2)',
+            fill: false,
+            data: [],
+            borderWidth: 2,
+            pointRadius: 0,
+          },
+          {
+            label: 'Peek-to-Peek',
+            borderColor: 'rgba(75, 192, 192, 1)',
+            backgroundColor: 'rgba(75, 192, 192, 0.2)',
+            fill: false,
+            data: [],
+            borderWidth: 2,
+            pointRadius: 0,
+          },
+          {
+            label: 'Crest Factor',
+            borderColor: 'rgba(153, 102, 255, 1)',
+            backgroundColor: 'rgba(153, 102, 255, 0.2)',
+            fill: false,
+            data: [],
+            borderWidth: 2,
+            pointRadius: 0,
+          },
+        ],
+      },
+      options: {
+        scales: {
+          x: {
+            type: 'realtime',
+            realtime: {
+              duration: 60 * 1000, // 1 minute
+              refresh: 1000, // Refresh every second
+              delay: 2000, // Delay before starting to display data
+              onRefresh: function (chart) {
+                // Ensure featureHistory has data
+                if (selectedMachine.featureHistory && selectedMachine.featureHistory.length > 0) {
+                  const latestFeatureData = selectedMachine.featureHistory[selectedMachine.featureHistory.length - 1];
+                  if (latestFeatureData) {
+                    const axisData = latestFeatureData[selectedAxis];
+                    console.log('Axis Data:', axisData); // Debugging log
+                    if (axisData) {
+                      chart.data.datasets[0].data.push({ x: Date.now(), y: axisData.rms });
+                      chart.data.datasets[1].data.push({ x: Date.now(), y: axisData.kurtosis });
+                      chart.data.datasets[2].data.push({ x: Date.now(), y: axisData['peek-to-peek'] });
+                      chart.data.datasets[3].data.push({ x: Date.now(), y: axisData.crest_factor });
+                    }
+                  }
+                } else {
+                  console.warn('No feature history available for the selected machine.');
+                }
+              },
+            },
+          },
+          y: {
+            beginAtZero: true,
+            title: {
+              display: true,
+              text: 'Vibration Level',
+            },
+          },
+        },
+        plugins: {
+          legend: {
+            display: true,
+          },
+          tooltip: {
+            callbacks: {
+              label: function (tooltipItem) {
+                const rawData = tooltipItem.raw as { x: number; y: number };
+                return `Vibration: ${rawData.y.toFixed(2)}`;
+              },
+            },
+          },
+        },
+      },
+    });
+
+    // Cleanup on component unmount
+    return () => {
+      if (chartInstanceRef.current) {
+        chartInstanceRef.current.destroy();
+      }
+    };
+  }, [selectedAxis, selectedMachine]);
+
+  return <canvas ref={chartRef} />;
+};
 
 function App() {
   const [machines, setMachines] = useState<Machine[]>([]);
@@ -66,17 +193,103 @@ function App() {
     type: 'Conveyor',
     location: 'Floor 1'
   });
+  const [realTimeData, setRealTimeData] = useState<Record<string, any>>({});
+  useEffect(() => {
+    const fetchRealTimeData = async () => {
+      try {
+        const response = await axios.get('http://127.0.0.1:8088/machine_data');
+
+        setRealTimeData(response.data);
+      } catch (error) {
+        console.error('Error fetching real-time data:', error);
+      }
+    };
+
+    const interval = setInterval(fetchRealTimeData, 1000); // Fetch real-time data every second
+    return () => clearInterval(interval); // Cleanup on unmount
+  }, []);
+
+  useEffect(() => {
+    if (Object.keys(realTimeData).length > 0) {
+      setMachines((prev) => {
+        const updatedMachines = Object.entries(realTimeData).map(([id, data]: [string, MachineData]) => {
+          const existingMachine = prev.find((m) => m.id === id);
+
+          const newFeatureData = {
+            timestamp: Date.now(),
+            x: {
+              rms: data.graph_value?.x?.rms || 0,
+              kurtosis: data.graph_value?.x?.kurtosis || 0,
+              'peek-to-peek': data.graph_value?.x?.['peek-to-peek'] || 0,
+              crest_factor: data.graph_value?.x?.crest_factor || 0,
+            },
+            y: {
+              rms: data.graph_value?.y?.rms || 0,
+              kurtosis: data.graph_value?.y?.kurtosis || 0,
+              'peek-to-peek': data.graph_value?.y?.['peek-to-peek'] || 0,
+              crest_factor: data.graph_value?.y?.crest_factor || 0,
+            },
+            z: {
+              rms: data.graph_value?.z?.rms || 0,
+              kurtosis: data.graph_value?.z?.kurtosis || 0,
+              'peek-to-peek': data.graph_value?.z?.['peek-to-peek'] || 0,
+              crest_factor: data.graph_value?.z?.crest_factor || 0,
+            },
+          };
+
+          return {
+            id,
+            name: existingMachine?.name || `Machine ${id}`,
+            type: existingMachine?.type || 'Conveyor',
+            location: existingMachine?.location || 'Floor 1',
+            lastMaintenance: existingMachine?.lastMaintenance || format(new Date(), 'yyyy-MM-dd'),
+            data,
+            featureHistory: [
+              ...(existingMachine?.featureHistory || []),
+              newFeatureData,
+            ].slice(-50), // Keep only the latest 50 entries
+          };
+        });
+
+        return updatedMachines;
+      });
+    }
+  }, [realTimeData]);
+
+  const debouncedSetMachines = debounce((updateFn) => {
+    setMachines(updateFn);
+  }, 500); // Update every 500ms
 
   useEffect(() => {
     const fetchData = async () => {
       try {
         const response = await axios.get<ApiResponse>(API_URL);
-        setMachines(prev => {
-          const updatedMachines = Object.entries(response.data).map(([id, data]) => {
-            const existingMachine = prev.find(m => m.id === id);
+        // console.log('API Response1:', response.data);
+        debouncedSetMachines((prev: Machine[]) => {
+          const updatedMachines: Machine[] = Object.entries(response.data).map(([id, data]: [string, MachineData]) => {
+            const existingMachine = prev.find((m) => m.id === id);
+
+            // Map graph_value to featureHistory
             const newFeatureData = {
               timestamp: Date.now(),
-              ...data.features!
+              x: {
+                rms: data.graph_value?.x?.rms || 0,
+                kurtosis: data.graph_value?.x?.kurtosis || 0,
+                'peek-to-peek': data.graph_value?.x?.['peek-to-peek'] || 0,
+                crest_factor: data.graph_value?.x?.crest_factor || 0,
+              },
+              y: {
+                rms: data.graph_value?.y?.rms || 0,
+                kurtosis: data.graph_value?.y?.kurtosis || 0,
+                'peek-to-peek': data.graph_value?.y?.['peek-to-peek'] || 0,
+                crest_factor: data.graph_value?.y?.crest_factor || 0,
+              },
+              z: {
+                rms: data.graph_value?.z?.rms || 0,
+                kurtosis: data.graph_value?.z?.kurtosis || 0,
+                'peek-to-peek': data.graph_value?.z?.['peek-to-peek'] || 0,
+                crest_factor: data.graph_value?.z?.crest_factor || 0,
+              },
             };
 
             return {
@@ -88,15 +301,15 @@ function App() {
               data,
               featureHistory: [
                 ...(existingMachine?.featureHistory || []),
-                newFeatureData
-              ].slice(-50)
+                newFeatureData,
+              ].slice(-50), // Keep only the latest 50 entries
             };
           });
 
-          // Keep manually added machines that aren't in the API response
-          const manualMachines = prev.filter(machine => 
-            !Object.keys(response.data).includes(machine.id) &&
-            machine.id.startsWith('manual-')
+          const manualMachines: Machine[] = prev.filter(
+            (machine) =>
+              !Object.keys(response.data).includes(machine.id) &&
+              machine.id.startsWith('manual-')
           );
 
           return [...updatedMachines, ...manualMachines];
@@ -106,8 +319,50 @@ function App() {
       }
     };
 
-    const interval = setInterval(fetchData, 50); // 1/20th second
-    return () => clearInterval(interval);
+    const interval = setInterval(fetchData, 1000); // Fetch data every second
+    return () => clearInterval(interval); // Cleanup on unmount
+  }, []);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const response = await axios.get('http://127.0.0.1:8088/machine_data');
+        const machineData = response.data;
+
+        // Process the graph data
+        const graphData = Object.entries(machineData).map(([machineId, data]) => ({
+          id: machineId,
+          x: (data as MachineData).graph_value?.x ?? 0,
+          y: (data as MachineData).graph_value?.y?? 0,
+          z: (data as MachineData).graph_value?.z?? 0,
+        }));
+
+        setMachines(prev => {
+          const updatedMachines = graphData.map(graphItem => {
+            const existingMachine = prev.find(machine => machine.id === graphItem.id);
+            return {
+              id: graphItem.id,
+              name: existingMachine?.name || `Machine ${graphItem.id}`,
+              type: existingMachine?.type || 'Conveyor',
+              location: existingMachine?.location || 'Floor 1',
+              lastMaintenance: existingMachine?.lastMaintenance || format(new Date(), 'yyyy-MM-dd'),
+              data: existingMachine?.data || {
+                confidence: 'low',
+                models: { gnb: 'unknown', knn: 'unknown', svm: 'unknown' },
+                predicted_fault: 'unknown',
+              },
+              featureHistory: existingMachine?.featureHistory || [],
+            };
+          });
+          return updatedMachines;
+        }); // Update the state with graph data
+      } catch (error) {
+        console.error('Error fetching machine data:', error);
+      }
+    };
+
+    const interval = setInterval(fetchData, 1000); // Fetch data every second
+    return () => clearInterval(interval); // Cleanup on unmount
   }, []);
 
   const getStatusColor = (machine: Machine) => {
@@ -233,15 +488,12 @@ function App() {
     </div>
   );
 
-  const MachineCard = ({ machine }: { machine: Machine }) => (
-    <div 
+  const MachineCard = React.memo(({ machine, onClick }: { machine: Machine; onClick: () => void }) => (
+    <div
       className={`p-6 rounded-lg ${getStatusColor(machine)} bg-opacity-10 border border-opacity-30 
         ${getStatusColor(machine).replace('bg-', 'border-')} cursor-pointer transform transition-all duration-300 
         hover:scale-105 hover:bg-opacity-20 group relative`}
-      onClick={() => {
-        console.log('Machine clicked:', machine); // Debugging log
-        setSelectedMachine(machine);
-      }}
+      onClick={onClick}
     >
       <button
         onClick={(e) => {
@@ -285,12 +537,12 @@ function App() {
         </div>
       </div>
     </div>
-  );
+  ));
 
   const updateMachineCount = async (count: number) => {
     try {
-      console.log(`Sending request to: http://127.0.0.1:5000/update_machine_count`);
-      await axios.post(`http://127.0.0.1:5000/update_machine_count`, { count });
+      console.log(`Sending request to: http://127.0.0.1:8088/update_machine_count`);
+      await axios.post(`http://127.0.0.1:8088/update_machine_count`, { count });
       console.log(`Machine count updated to ${count}`);
     } catch (error) {
       console.error('Error updating machine count:', error);
@@ -388,44 +640,36 @@ function App() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-1">
-                    Feature
+                    Test Input
                   </label>
                   <select
                     value={selectedFeature}
-                    onChange={(e) => setSelectedFeature(e.target.value as keyof FeatureData)}
+                    onChange={async (e) => {
+                      const newFeature = e.target.value as keyof FeatureData;
+                      setSelectedFeature(newFeature);
+                      try{
+                        await axios.post('http://127.0.0.1:8088/update_test_input', { feature: newFeature, machine_id: selectedMachine?.id });
+                        console.log(`Test input updated to ${newFeature } for machine ${selectedMachine?.id}`);
+                      }catch (error) {
+                        console.error('Error updating test input:', error);
+                      }
+                    }}
                     className="bg-gray-700 rounded px-3 py-2 text-white"
                   >
-                    <option value="rms">RMS</option>
-                    <option value="kurtosis">Kurtosis</option>
-                    <option value="peek-to-peek">Peek-to-Peek</option>
-                    <option value="crest_factor">Crest Factor</option>
+                    <option value="normal">Normal</option>
+                    <option value="misalignment">Misalignment</option>
+                    <option value="unbalance">Unbalance</option>
+                    <option value="bearing">bearing</option>
                   </select>
                 </div>
               </div>
 
-              <div className="h-[400px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={selectedMachine.featureHistory}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                    <XAxis 
-                      dataKey="timestamp"
-                      tickFormatter={(timestamp) => format(timestamp, 'HH:mm:ss')}
-                      stroke="#9CA3AF"
-                    />
-                    <YAxis stroke="#9CA3AF" />
-                    <Tooltip
-                      contentStyle={{ backgroundColor: '#1F2937', border: 'none' }}
-                      labelFormatter={(timestamp) => format(timestamp, 'HH:mm:ss')}
-                    />
-                    <Line 
-                      type="monotone" 
-                      dataKey={`${selectedAxis}.${selectedFeature}`}
-                      stroke="#EC4899" 
-                      name={`${selectedAxis.toUpperCase()} ${selectedFeature}`} 
-                      dot={false} 
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
+              <div className="h-[800px]">
+                  <RealTimeChart
+                    selectedAxis={selectedAxis}
+                    selectedMachine={selectedMachine}
+                  />
+                
               </div>
             </div>
           </>
@@ -443,7 +687,10 @@ function App() {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
               {machines.map(machine => (
-                <MachineCard key={machine.id} machine={machine} />
+                <MachineCard key={machine.id} machine={machine} onClick={() => {
+                  console.log('Machine clicked:', machine); // Debugging log
+                  setSelectedMachine(machine);
+                }} />
               ))}
             </div>
           </>

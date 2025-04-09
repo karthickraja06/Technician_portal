@@ -9,21 +9,19 @@ DATA_PATHS = {
     "unbalance": "data/unbalance_data.csv"
 }
 
-def load_random_vibration_data():
-    condition = random.choice(list(DATA_PATHS.keys()))  # Pick a random fault condition
-    df = pd.read_csv(
-        DATA_PATHS[condition], 
-        skiprows=random.randint(0, 900),  # Skip random rows
-        nrows=100,  # Read only 100 rows
-        header=None,  # No headers in the file
-        names=['time', 'x', 'y', 'z']  # Explicit column names
-    )  # Load small chunk
-    
-    return (df[['time', 'x', 'y', 'z']].values,condition) # Return NumPy array
-
-def data_streaming(machine_id, queue):
+def data_streaming(machine_id, queue, shared_data):
     """ Simulates real-time streaming of vibration data for a machine """
     while True:
-        data, condition = load_random_vibration_data()
-        queue.put((machine_id, data, condition))  # Send to processing queue
+        # Get the current condition for the machine
+        condition = shared_data.get(str(machine_id), "normal")  # Default to "normal"
+        file_path = DATA_PATHS[condition]  # Get the file path for the condition
+        # Load data from the corresponding file
+        df = pd.read_csv(
+            file_path,
+            skiprows=random.randint(0, 10000),  # Skip random rows
+            nrows=100,  # Read only 100 rows
+            header=None,  # No headers in the file
+            names=['time', 'x', 'y', 'z']  # Explicit column names
+        )
+        queue.put((machine_id, df[['time', 'x', 'y', 'z']].values, condition))  # Send to processing queue
         time.sleep(1)  # Simulate real-time arrival of data

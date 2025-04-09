@@ -51,25 +51,25 @@ def extract_feature(data):
     features = np.concatenate([
         np.concatenate([func(fft_x), func(fft_y), func(fft_z)]) for func in feature_funcs
     ])
-    
-
+ 
+    # Convert numpy.float64 to Python float
     return (features, {
         "x": {
-            'rms': features[3],
-            'kurtosis': features[6],
-            'pp': features[5],
-            'crestf': features[7]
+            'rms': float(features[3]),
+            'kurtosis': float(features[6]),
+            'pp': float(features[5]),
+            'crestf': float(features[7])
         },
         "y": {
-            'rms': features[3 + 9],
-            'kurtosis': features[6 + 9],
-            'pp': features[5 + 9],
-            'crestf': features[7 + 9]
+            'rms': float(features[3 + 9]),
+            'kurtosis': float(features[6 + 9]),
+            'pp': float(features[5 + 9]),
+            'crestf': float(features[7 + 9])
         },
         "z": {
-            'rms': features[3 + 18],
-            'kurtosis': features[6 + 18],
-            'pp': features[5 + 18],
-            'crestf': features[7 + 18]
+            'rms': float(features[3 + 18]),
+            'kurtosis': float(features[6 + 18]),
+            'pp': float(features[5 + 18]),
+            'crestf': float(features[7 + 18])
         }
     })
